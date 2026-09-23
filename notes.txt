@@ -1,96 +1,34 @@
-# Project: account-service-parent — Enum Serialization Fix
+# Verification: Enum Behavior After the Fix
 
-I want to fix an issue with a clear, streamlined approach rather than patching things in random places. Work autonomously, but stop and ask me whenever you hit one of the stop points listed below.
+The enum serialization fix is complete. Now verify it end to end. This is a verification pass only: report problems, and don't change anything without asking me.
 
-## Context
+## Step 1: Confirm the setup
 
-account-service-parent is a production microservice. It originally had two kinds of endpoints coexisting:
+1. Check that the local `before-migration` branch still exists. If it doesn't, ask me for the commit ID.
+2. From the code, list:
+   - The **IVR endpoints** (the OpenAPI endpoints that existed in `before-migration`).
+   - The **migrated endpoints** and their `/legacy` counterparts.
+3. Show me both lists and **wait for my confirmation** before proceeding.
 
-1. **OpenAPI spec endpoints.** A small set of IVR endpoints (around 5–6; verify the exact count) were defined in the OpenAPI spec. The Maven build generates the API interfaces, and our controllers implement them.
-2. **Hand-written Java endpoints.** All remaining endpoints were implemented directly in Java classes, with no OpenAPI spec.
+## Step 2: Verify the IVR endpoints
 
-## Recent migration
+For each IVR endpoint, trace every request and response model, including nested models at every depth. Every enum must be **exactly the same** in the current branch as in `before-migration`: same constants, same names, same values, same serialization behavior.
 
-We recently migrated the hand-written endpoints (around 17–19) to the OpenAPI spec, so all endpoints are now spec-based. For these migrated endpoints, we kept the old Java-class endpoints in place and appended `/legacy` to their paths.
+## Step 3: Verify the migrated endpoints
 
-The service layer was not touched. At the controller layer, we created new request/response classes generated from the spec and mapped them to the existing domain classes so behavior wouldn't change. Only the controllers differ between the OpenAPI endpoints and the legacy Java endpoints.
+For each migrated endpoint, compare every enum in the OpenAPI version against the enum used by its `/legacy` counterpart, and write a parameterized JUnit test using `@EnumSource` so every constant is covered. For each constant, check:
 
-## The problem: enum serialization
+- **Constants match:** nothing exists on one side but not the other.
+- **Serialization:** the JSON output matches what `/legacy` produces.
+- **Mapper:** works in both directions (domain ↔ generated) with nothing lost or mismatched.
+- **Deserialization:** for enums in requests (POST, PUT, PATCH, and query or path parameters), the OpenAPI version accepts the same input as `/legacy`.
 
-- The legacy (Java-class) endpoints serialized enums using the Java enum **name**.
-- The OpenAPI-generated code serializes enums using the enum **value**.
+## Step 4: Report
 
-To preserve legacy behavior, I created a custom enum serializer (as part of the recent migration) and registered the specific enums that should serialize by name instead of value.
-
-However, the original IVR endpoints use enums nearly identical to those in the migrated endpoints, and the IVR endpoints serialize by **value**. Because both share the same OpenAPI spec, the IVR enums were modified during migration, and now serialization is inconsistent. We believe every enum is potentially affected.
-
-## Sources of truth
-
-- **IVR endpoints:** the `before-migration` branch (see Step 1).
-- **Migrated endpoints:** the `/legacy` endpoints in the current branch.
-
-## Step 1: Set up
-
-1. **Ask me for the commit ID** from just before the recent migration. At that commit, only the IVR endpoints existed in the OpenAPI spec, and everything worked correctly.
-2. Create a local branch from it named `before-migration`.
-3. Create a local working folder for tracking documents, and add it to `.git/info/exclude` so it's never committed. I'll delete it myself before committing.
-
-## Step 2: Build the inventory and tracker
-
-1. Run a `git diff` of the OpenAPI spec file(s) between `before-migration` and the current branch.
-2. Identify every change affecting the IVR endpoints: enums first, but also any drift in shared schemas (fields, `required`, `nullable`, formats).
-3. List every migrated endpoint and the enums it uses in requests and responses.
-4. Write all of this to an inventory document, then create a tracker with one checklist item per affected enum and per endpoint.
-
-Work through the tracker one item at a time. After each item, tick it off and record what you changed and how you verified it. The tracker is the source of truth for progress: if the session restarts or runs out of context, read it first and resume from where it left off.
-
-## Step 3: Restore the IVR endpoints
-
-For each IVR-related change found in the diff, trace the affected models fully, including nested models at every depth:
-
-1. Restore the spec to match `before-migration`, so the IVR endpoint behaves exactly as before. Restoring the spec covers both requests and responses.
-2. If a restored enum is also used by migrated endpoints, create a new, separate enum with an appropriate, similar name for the migrated endpoints.
-3. Find every usage of the original enum in the migrated endpoints, verify each one, and update it to use the new enum.
-4. If the original enum is registered in the custom enum serializer, replace it there with the new enum.
-
-## Step 4: Verify the migrated endpoints
-
-For each migrated endpoint, compare it against its `/legacy` counterpart in the current branch.
-
-**Responses:**
-- Verify that all enum names and values match between the legacy and OpenAPI versions.
-- Determine what the legacy endpoint serializes each enum to:
-  - **If name:** make sure the enum is registered in the custom enum serializer.
-  - **If value:** leave it out of the serializer. The OpenAPI code returns the value by default.
-
-**Requests (POST, PUT, PATCH, and any query or path parameters):**
-- Check whether the request carries enums and whether the OpenAPI version accepts the same input as `/legacy`.
-- **If you find a discrepancy, stop and report it to me before changing anything.**
-
-## Testing
-
-- **Exhaustive enum tests.** For every affected enum, write a parameterized JUnit test using `@EnumSource` so every constant is covered, not just hand-picked ones. Constants with underscores, hyphens, or multiple words are where mismatches hide. For each constant, check:
-  - Serialization matches the `/legacy` output.
-  - The mapper works in both directions (domain ↔ generated) with no constant lost or mismatched.
-  - Deserialization works, for enums used in requests.
-  - Flag any constant that exists on one side but not the other.
-- **When unsure, test.** If you're stuck or unsure how something behaves, write a temporary test to find out instead of guessing.
-- These tests are temporary. List them in the tracker so they can be removed at the end.
-
-## Build
-
-- **Rebuild after every spec change.** Check the `pom.xml` files to find where the OpenAPI spec and generator plugin are configured, and identify which module needs to be built to regenerate the API interfaces and models. Use the appropriate Maven command for that module, and confirm the build succeeds before moving on.
-- **Keep existing tests passing.** After any change, identify which tests might be affected, run them, and fix any failures as you go rather than leaving them for the end.
+Give me a summary table with one row per endpoint and enum, showing pass or fail for each check. For every failure, explain what's wrong and propose a fix, but **don't apply it until I approve**.
 
 ## Guardrails
 
-- **Never assume anything.** The source code is available, so verify everything against it or with a test.
-- **Legacy enum classes** may come from a library, so look for them in `target/classes` or the local Maven repository.
-
-## Stop and ask me when
-
-- You need the `before-migration` commit ID.
-- A request-side enum discrepancy is found on a migrated endpoint.
-- You can't find a legacy enum class. Give me the expected path and I'll open it and share it with you.
-- You need permission for anything.
-- Anything is ambiguous and can't be settled by reading the code or writing a test.
+- Never assume. Verify everything against the code or with a test.
+- Legacy enum classes may come from a library, so look in `target/classes` or the local Maven repository. If you can't find one, give me the expected path.
+- The verification tests are temporary. List them at the end so I can remove them.
