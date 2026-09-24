@@ -1,41 +1,38 @@
-I thought this issue was fixed. The service layer now commits the flag to the DB
-immediately when it returns. But I have observed something else.
+I am new to this service, so I am not certain about any of this. Based on what I
+understand so far:
 
-BACKGROUND
+The recon batch calls the chargeback domain service. Before calling it, it picks up
+the records with flag N, changes them to P, and then submits an async task to the
+chargeback domain service.
 
-We submit an async task to the chargeback domain service. That service can update
-this flag to N, Y or F -- it can change it to anything except P.
+Please go through the whole flow again and confirm or correct that.
 
-So the race is: our service layer sets the flag to P, the async chargeback domain
-work then sets it to something else, and the recon batch overwrites it afterwards.
+THE TRANSACTION MANAGER
 
-HOW I REPRODUCE IT
+I am confused by the transaction manager in the recon batch config class, and
+whether it is really needed.
 
-In my test environment every record in the DB is already P. The batch only picks up
-records with N or F, so nothing gets picked up. To test, I manually update one
-record's flag to N so the next cron run picks it up.
+- If it is managing a chunk-level transaction, what kind of transaction is it
+  actually managing?
+- What error scenario is it there for? What concretely happens if it is not there?
+- We are already committing to the DB with @Transactional(propagation = REQUIRES_NEW),
+  so that transaction commits on its own regardless.
 
-WHAT I OBSERVE, STEP BY STEP
+Do you think the earlier failure -- the one we just fixed, where the flag was being
+updated to P again -- was caused by this transaction manager? If not, what is the
+actual cause, and how do we resolve it?
 
-1. AccountStagingReader line 75 is triggered, then 76, 77, and on from there.
-2. At line 84 it submits to the executor class.
-3. The executor calls the recon service to update the flag immediately.
-4. When that returns, line 115 updates the flag to P. This part is expected.
-5. Execution moves from 115 to 120, exits processThrottleStagingInfo, and returns
-   to the reader.
-6. Back in the reader, debugging continues for a while, and then right at the end --
-   as it exits the read method in AccountStagingReader -- the flag is updated to P
-   again.
+THE CONSTRAINT
 
-THE PROBLEM
+You said this transaction manager is absolutely needed in order to call the chunk
+method. If that is true, then how do we solve this problem?
 
-The flag is written to P twice: once in the executor at line 115, and again on the
-way out of AccountStagingReader.read(). If the async chargeback domain service set
-the flag to N, Y or F in between those two writes, that second write silently
-overwrites it and the record goes back to P.
+The requirement is that the DB has to be updated immediately. We submit an async task
+to the chargeback domain service, and that service needs to pick the record up. By
+the time it picks it up, the flag must already be updated. We cannot wait until the
+recon batch completes and only then commits P.
 
-WHAT I NEED
+HOW I WANT YOU TO ANSWER
 
-Find where that second update to P at the end of the read method is coming from,
-and tell me how to stop the reader from re-writing the flag after the executor has
-already committed it.
+Dig deep. Do not just come back with questions. Go through the code, analyze
+everything, and present me with the analysis.
