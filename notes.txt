@@ -1,34 +1,41 @@
-# Verification: Enum Behavior After the Fix
+I thought this issue was fixed. The service layer now commits the flag to the DB
+immediately when it returns. But I have observed something else.
 
-The enum serialization fix is complete. Now verify it end to end. This is a verification pass only: report problems, and don't change anything without asking me.
+BACKGROUND
 
-## Step 1: Confirm the setup
+We submit an async task to the chargeback domain service. That service can update
+this flag to N, Y or F -- it can change it to anything except P.
 
-1. Check that the local `before-migration` branch still exists. If it doesn't, ask me for the commit ID.
-2. From the code, list:
-   - The **IVR endpoints** (the OpenAPI endpoints that existed in `before-migration`).
-   - The **migrated endpoints** and their `/legacy` counterparts.
-3. Show me both lists and **wait for my confirmation** before proceeding.
+So the race is: our service layer sets the flag to P, the async chargeback domain
+work then sets it to something else, and the recon batch overwrites it afterwards.
 
-## Step 2: Verify the IVR endpoints
+HOW I REPRODUCE IT
 
-For each IVR endpoint, trace every request and response model, including nested models at every depth. Every enum must be **exactly the same** in the current branch as in `before-migration`: same constants, same names, same values, same serialization behavior.
+In my test environment every record in the DB is already P. The batch only picks up
+records with N or F, so nothing gets picked up. To test, I manually update one
+record's flag to N so the next cron run picks it up.
 
-## Step 3: Verify the migrated endpoints
+WHAT I OBSERVE, STEP BY STEP
 
-For each migrated endpoint, compare every enum in the OpenAPI version against the enum used by its `/legacy` counterpart, and write a parameterized JUnit test using `@EnumSource` so every constant is covered. For each constant, check:
+1. AccountStagingReader line 75 is triggered, then 76, 77, and on from there.
+2. At line 84 it submits to the executor class.
+3. The executor calls the recon service to update the flag immediately.
+4. When that returns, line 115 updates the flag to P. This part is expected.
+5. Execution moves from 115 to 120, exits processThrottleStagingInfo, and returns
+   to the reader.
+6. Back in the reader, debugging continues for a while, and then right at the end --
+   as it exits the read method in AccountStagingReader -- the flag is updated to P
+   again.
 
-- **Constants match:** nothing exists on one side but not the other.
-- **Serialization:** the JSON output matches what `/legacy` produces.
-- **Mapper:** works in both directions (domain ↔ generated) with nothing lost or mismatched.
-- **Deserialization:** for enums in requests (POST, PUT, PATCH, and query or path parameters), the OpenAPI version accepts the same input as `/legacy`.
+THE PROBLEM
 
-## Step 4: Report
+The flag is written to P twice: once in the executor at line 115, and again on the
+way out of AccountStagingReader.read(). If the async chargeback domain service set
+the flag to N, Y or F in between those two writes, that second write silently
+overwrites it and the record goes back to P.
 
-Give me a summary table with one row per endpoint and enum, showing pass or fail for each check. For every failure, explain what's wrong and propose a fix, but **don't apply it until I approve**.
+WHAT I NEED
 
-## Guardrails
-
-- Never assume. Verify everything against the code or with a test.
-- Legacy enum classes may come from a library, so look in `target/classes` or the local Maven repository. If you can't find one, give me the expected path.
-- The verification tests are temporary. List them at the end so I can remove them.
+Find where that second update to P at the end of the read method is coming from,
+and tell me how to stop the reader from re-writing the flag after the executor has
+already committed it.
