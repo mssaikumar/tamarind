@@ -1,21 +1,21 @@
 THE SETUP
 
-I am working on the branch feature/local_sci.
+I am working in config-fcm, the project that holds the config for all 40 odd service
+repos. My branch there is feature/local_sai.
 
-We have around 40 services. Config lives in a separate config repository, with
-folders per environment: QA01, QA02, QA03, dev and perf. All of that has always
-worked, and we used to bring the services up locally by pointing at that config.
+Config is organised per environment: QA01, QA02, QA03, dev and perf. All of that has
+always worked, and we used to bring the services up locally by pointing at this config.
 
 WHAT BROKE
 
-All our secrets were recently moved to CSM. Since that migration, the config files
-no longer work for local runs -- the applications will not come up, because the
-secrets are not present.
+All our secrets were recently moved to CSM. Since that migration, the config files no
+longer work for local runs -- the applications will not come up, because the secrets
+are not present.
 
 MY CURRENT WORKAROUND, AND WHY I WANT TO DROP IT
 
-In the config repository I checked out a commit from just before the CSM migration
-started, so that I can still bring my application up locally.
+In config-fcm I checked out a commit from just before the CSM migration started, so
+that I can still bring my application up locally.
 
 The problem is that my branch is pinned to that old commit, so when anyone makes new
 config changes on top of the latest main I cannot pull them. It is getting messy.
@@ -44,10 +44,11 @@ the application YAML -- the latest config can stay exactly as it is.
 WHAT I WANT YOU TO DO
 
 1. Pull main first. My local main may be stale, so do not trust what is on disk.
-2. Treat my current branch (feature/local_sci) as "before the CSM migration" and main
+2. Treat my current branch, feature/local_sai, as "before the CSM migration" and main
    as the latest code, and diff them.
-3. Do not research one service and conclude you are done. Go through at least 10 of
-   the 40 services and find the actual pattern in how the secrets were moved to CSM.
+3. Do not research one service and conclude you are done. Go through the config of at
+   least 10 of the 40 services and find the actual pattern in how the secrets were
+   moved to CSM.
 4. Work out the VM options pattern that lets me run the latest main config locally
    without touching any project file. Figuring out those VM options is the core of
    this -- that part is on you.
