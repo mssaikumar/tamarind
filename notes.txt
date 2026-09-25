@@ -1,38 +1,54 @@
-I am new to this service, so I am not certain about any of this. Based on what I
-understand so far:
+THE SETUP
 
-The recon batch calls the chargeback domain service. Before calling it, it picks up
-the records with flag N, changes them to P, and then submits an async task to the
-chargeback domain service.
+I am working on the branch feature/local_sci.
 
-Please go through the whole flow again and confirm or correct that.
+We have around 40 services. Config lives in a separate config repository, with
+folders per environment: QA01, QA02, QA03, dev and perf. All of that has always
+worked, and we used to bring the services up locally by pointing at that config.
 
-THE TRANSACTION MANAGER
+WHAT BROKE
 
-I am confused by the transaction manager in the recon batch config class, and
-whether it is really needed.
+All our secrets were recently moved to CSM. Since that migration, the config files
+no longer work for local runs -- the applications will not come up, because the
+secrets are not present.
 
-- If it is managing a chunk-level transaction, what kind of transaction is it
-  actually managing?
-- What error scenario is it there for? What concretely happens if it is not there?
-- We are already committing to the DB with @Transactional(propagation = REQUIRES_NEW),
-  so that transaction commits on its own regardless.
+MY CURRENT WORKAROUND, AND WHY I WANT TO DROP IT
 
-Do you think the earlier failure -- the one we just fixed, where the flag was being
-updated to P again -- was caused by this transaction manager? If not, what is the
-actual cause, and how do we resolve it?
+In the config repository I checked out a commit from just before the CSM migration
+started, so that I can still bring my application up locally.
 
-THE CONSTRAINT
+The problem is that my branch is pinned to that old commit, so when anyone makes new
+config changes on top of the latest main I cannot pull them. It is getting messy.
 
-You said this transaction manager is absolutely needed in order to call the chunk
-method. If that is true, then how do we solve this problem?
+I also do not want to fix this by editing project files locally -- if I modify things
+in my working copy to get the app up, someone else pushes a change and my setup breaks
+again. I want my config to always be the latest main, and I want the local-only part
+handled entirely through VM options or something else supplied at runtime.
 
-The requirement is that the DB has to be updated immediately. We submit an async task
-to the chargeback domain service, and that service needs to pick the record up. By
-the time it picks it up, the flag must already be updated. We cannot wait until the
-recon batch completes and only then commits P.
+HOW I RUN SERVICES LOCALLY TODAY
 
-HOW I WANT YOU TO ANSWER
+For any environment: inside the project there is a folder called app, and inside that
+a project called config, which holds these files. In that JSON file, line 3 is a field
+called JAVA_DEVOPS_OPTS -- those are the VM options we use.
 
-Dig deep. Do not just come back with questions. Go through the code, analyze
-everything, and present me with the analysis.
+In those VM options I override paths: the external YAML file, the bootstrap YAML, and
+the CSM YAML. I replace each of those paths. That is how we have always brought the
+applications up locally.
+
+One thing in my favour: I still have the actual secrets locally, from when the older
+config was working.
+
+Also, if a property moved somewhere or changed name, we can still keep it the same in
+the application YAML -- the latest config can stay exactly as it is.
+
+WHAT I WANT YOU TO DO
+
+1. Pull main first. My local main may be stale, so do not trust what is on disk.
+2. Treat my current branch (feature/local_sci) as "before the CSM migration" and main
+   as the latest code, and diff them.
+3. Do not research one service and conclude you are done. Go through at least 10 of
+   the 40 services and find the actual pattern in how the secrets were moved to CSM.
+4. Work out the VM options pattern that lets me run the latest main config locally
+   without touching any project file. Figuring out those VM options is the core of
+   this -- that part is on you.
+5. Then come back and review the plan with me. Deep research first, then the plan.
