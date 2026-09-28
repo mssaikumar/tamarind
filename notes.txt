@@ -1,1 +1,78 @@
-Okay. I have deleted your uh, changes. file change log file and then uh, the security folder. Uh, so since you said that match struct is needed, let's do this. So uh, let's not worry about uh, open API specification for now. Remove everything that you just added and let's just directly implement uh, like controller and then we will uh, migrate that using that skills to open API. What do you think?
+# Task: Complete the new microservice — endpoint alignment, bearer token validation, and MasterCard connectivity
+
+## Goal
+Finish the remaining work on the new microservice so it can be deployed to the dev environment, where I will verify that:
+1. The endpoint rejects requests without a valid bearer token, the same way the other services in this project do.
+2. The endpoint successfully connects to MasterCard. Any error MasterCard returns should be a request validation error (e.g. invalid payload), NOT an authentication or authorization error. Request correctness will be handled later.
+
+## Context (already done, do not redo)
+- The service is a Spring Boot 3.5.16 microservice. The skeleton runs cleanly locally and is deployed to dev.
+- Local Vault token authentication is set up the same way as the other services (the token is copied from OpenShift for local runs).
+- The new REST endpoint is implemented based on a Confluence spec. It currently returns a fixed response.
+- The OpenAPI migration is done: a generated controller interface, generated request/response models, and a MapStruct mapper to the legacy request/response objects, following the same approach as the other services.
+
+## Paths
+- This service: `<path to new service>`
+- Project root (contains ~40 other services): `<path to project root>`
+- Common config repository (FCM), with configs for all 5 environments: `<path to FCM config repo>`
+- Dev environment config within FCM: `<path to dev config>`
+- sav-case-inquiry service (contains the MasterCard POC): `<path to sav-case-inquiry>`
+- POC branch: `<branch name>`
+- MasterCard code folder in sav-case-inquiry: `<path to MasterCard folder>`
+- A reference service with bearer token validation (optional): `<path to a known-good service>`
+
+## Rules
+- Before starting, create `TASK_TRACKER.md` in this service's root with every step below as a checklist. Update it as you go.
+- Work strictly one step at a time. Do not start the next step until the current step's goal is met and verified. Mark a step done only once it's verified.
+- Work autonomously between steps, but never assume anything. If you need information, access, a decision, or anything you can't verify from the code, commit history, or configs, stop and ask me.
+- Follow the existing architecture and conventions of the other services in the project. The new service should look like it belongs with them.
+- Do not commit or push unless I ask.
+
+## Steps
+
+### Step 1 — Confluence alignment
+- Ask me for the Confluence page link for this endpoint.
+- Verify the endpoint path, HTTP method, headers, and every request and response field in the service match the Confluence spec, including the OpenAPI spec, generated models, and MapStruct mapper.
+- Report any mismatches and fix them after confirming with me.
+
+### Step 2 — Local verification
+- Ask me for the VM arguments for this service and record them in `TASK_TRACKER.md` so they are remembered for all later local runs.
+- Before starting the service, ask me to refresh the local Vault token, and wait for my confirmation.
+- Start the service locally and hit the endpoint. Confirm it responds as expected.
+- Repeat this verification (asking for a Vault token refresh each time) after any later step that changes code. Once Step 4 is done, use the fixed-response mode for local verification, since MasterCard is not reachable locally.
+
+### Step 3 — Bearer token validation
+- Other services in the project require a valid bearer token. Locally any token is accepted, but in deployed environments an invalid or malformed token is rejected (e.g. 400 Bad Request for a malformed token).
+- Study how this is implemented across the other services in the project root: code, filters or security config, dependencies, and application config.
+- Check whether this behavior is environment specific. If it is driven by config, find how it's set up in the FCM config repo for each environment, especially dev.
+- Implement the same capability in this service, matching the existing architecture.
+- This can't be fully tested locally. Confirm the service still starts and the endpoint still works locally, and list what I should verify in dev.
+
+### Step 4 — MasterCard connectivity
+- A colleague built a MasterCard connectivity POC in sav-case-inquiry on the branch above, and it was tested successfully in dev. Her commits are from September 9 and 10; the final commit is the working version.
+- All her changes are in the sav-case-inquiry repository itself: the code lives in the MasterCard folder, and she also changed the application YAML. She made no changes to the FCM config repo.
+- Compare the code from before her first POC commit to her final commit to get the full set of changes. Then also go through the individual commits to double-check nothing was missed and to understand the problems she hit and how she fixed them.
+- Identify everything required for connectivity: code, dependencies, application YAML config, certificates, keystores, secrets, Vault entries, and any environment-specific settings.
+- Integrate all of it into this service, following this service's structure. If something needs to be provisioned outside the code (secrets, certificates, Vault entries), stop and tell me exactly what's needed.
+- Wire the endpoint to MasterCard:
+  - In the service layer (or wherever the fixed response is currently returned), move the fixed-response logic into its own separate method. Keep it.
+  - Add the MasterCard path so the endpoint actually calls MasterCard.
+  - Make it easy for me to switch between the two paths for local testing (for example, a config property). Confirm the switching approach with me before implementing it.
+  - Default: MasterCard path enabled, fixed-response path disabled.
+- MasterCard is not reachable locally. Confirm the service still starts locally and the endpoint works in fixed-response mode, and list what I should verify in dev.
+
+### Step 5 — Diagnostic logging
+- Add logging around the MasterCard call so that from the dev logs I can clearly tell whether MasterCard:
+  - rejected the request due to authentication,
+  - rejected the request due to authorization,
+  - accepted the connection but failed request validation, or
+  - succeeded.
+- Log the HTTP status, relevant response headers, and the error body. Never log secrets, tokens, keys, or sensitive payload data.
+
+### Step 6 — JUnit tests
+- Write clean JUnit tests for all new and changed code (bearer token validation, MasterCard client and config, the fixed-response/MasterCard switch, mapper, controller), following the testing conventions of the other services.
+- Run the full test suite and make sure everything passes.
+
+### Step 7 — Final summary
+- Run the local verification once more.
+- Update `TASK_TRACKER.md` with a summary of all changes, all files touched, anything that needs to be provisioned externally, and a checklist of what I should verify after deploying to dev.
