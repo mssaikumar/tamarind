@@ -1,1 +1,9 @@
-Oh my God. What are you doing? What does my task say if you encounter a date field in the confluence page?
+Step 2 missed date fields. Example: `<field name>` is a date in the spec file, but it is a String in both the OpenAPI model and the business model, and the audit did not flag it. The audit compared declared types only. Redo the date part of the audit before moving on:
+
+1. Identify every date or time field in the spec file using ALL of these, not just the declared type: format, description text, example values, and field names (date, time, timestamp, expiry, etc.). The spec may declare a date as a string and describe the format in text.
+2. Search the spec file for date-related keywords and for example values that match date patterns. Show me the search terms you used, so I can see nothing was skipped.
+3. List every date field in a table: field | request or response | exact format from the spec | time zone info | example | current OpenAPI type | current business type | current mapper handling.
+4. Apply the date rules from Step 4 to each field: proposed business type with a one-line reason, and the OpenAPI type (format date/date-time only if the generated type is exactly right, otherwise string with mapper conversion).
+5. Re-check the rest of the audit for the same mistake: fields where the declared types match but the spec's description, format, or example implies something more specific (for example, allowed values described in text that should be an enum, fixed formats, or length limits).
+
+Present the updated tables. STOP and wait for my approval.
